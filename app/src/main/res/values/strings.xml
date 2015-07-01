@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Spotify Streamer</string>
+    <string name="hello_world">Hello world!</string>
+    <string name="action_settings">Settings</string>
+    <string name="title_activity_detail">DetailActivity</string>
+    <string name="connecting">Connecting...</string>
+    <string name="artist_not_found">Artist not found. Try again.</string>
+    <string name="artist_does_not_have_song">The artist %s does not have songs in database for your country.</string>
+    <string name="connexion_error">Error connecting to the Spotify Server. Check your connection.</string>
+</resources>
