@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <CheckBoxPreference
+        android:title="Notification"
+        android:key="notification"
+        android:defaultValue="true"
+        />
+
+    <ListPreference
+        android:title="Location"
+        android:key="location"
+        android:defaultValue="US"
+        android:entryValues="@array/pref_units_values"
+        android:entries="@array/pref_units_options"
+        android:dialogTitle="bla"
+        />
+
+</PreferenceScreen>

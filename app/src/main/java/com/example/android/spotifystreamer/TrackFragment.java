@@ -1,167 +1,193 @@
 package com.example.android.spotifystreamer;
 
-import android.app.AlertDialog;
-import android.content.DialogInterface;
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
+import android.database.Cursor;
 import android.net.Uri;
-import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.IBinder;
+import android.preference.PreferenceManager;
 import android.support.v4.app.Fragment;
+import android.support.v4.app.LoaderManager;
+import android.support.v4.content.CursorLoader;
+import android.support.v4.content.Loader;
 import android.view.LayoutInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ListView;
+import android.widget.Toast;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import com.example.android.spotifystreamer.data.StreamerContract;
 
-import kaaes.spotify.webapi.android.SpotifyApi;
-import kaaes.spotify.webapi.android.SpotifyService;
-
-
-/**
- * A placeholder fragment containing a simple view.
- */
-public class TrackFragment extends Fragment {
-    private String artist_id = "";
-    private String artist_name = "";
-    private ArrayList<Track> songArrayList = new ArrayList<Track>();
+public class TrackFragment extends Fragment implements LoaderManager.LoaderCallbacks<Cursor>{
+    private String artistId;
+    private String artistName;
+    private String countryCode = "";
     private TrackAdapter trackAdapter;
-    private boolean started = false;
+
+    private Boolean mBound = false;
+    private PlayerService mService = null;
+    private ServiceConnection mConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            PlayerService.LocalBinder binder = (PlayerService.LocalBinder) service;
+            mService = binder.getService();
+            mBound = true;
+            checkSett();
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            mBound = false;
+        }
+    };
+    private void disconnect(){
+        getActivity().unbindService(mConnection);
+        mBound = false;
+    }
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,Bundle savedInstanceState) {
-        this.setRetainInstance(true);
+    public View onCreateView(final LayoutInflater inflater, ViewGroup container,Bundle savedInstanceState) {
+        setHasOptionsMenu(true);
         View rootView = inflater.inflate(R.layout.fragment_song, container, false);
-
-        Intent intent = getActivity().getIntent();
-        if(intent != null && intent.hasExtra("strings")){
-            String[] extra = intent.getStringArrayExtra("strings");
-            artist_id = extra[0];
-            artist_name = extra[1];
-            getActivity().setTitle(artist_name);
+        Bundle arguments = getArguments();
+        if (arguments != null) {
+            artistId = arguments.getString("artistId");
+            artistName = arguments.getString("artistName");
+            getActivity().setTitle(artistName);
         }
-
-
-
-        ListView listView = (ListView)rootView.findViewById(R.id.listview_song);
-        trackAdapter = new TrackAdapter(getActivity(),R.layout.list_item_song, songArrayList);
+        ListView listView = (ListView) rootView.findViewById(R.id.listview_song);
+        trackAdapter = new TrackAdapter(getActivity(), null, 0);
 
         listView.setAdapter(trackAdapter);
-        if (started == false) {
-            update();
-            started = true;
-        }
+
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-
+                String uri = StreamerContract.TrackEntry.buildTrackByArtist(artistId).toString();
+                ((clickTrackInterface)getActivity()).clickTrack(uri,position,true);
             }
         });
+        if(savedInstanceState == null) {
+            update();
+        }
+        getLoaderManager().initLoader(0, null, this);
         return rootView;
     }
 
-
-
-    /////////////////////////////////////////////////////////////////////////////////////////////
-    //
-    ///
-    ///
-    ///
-    //
-    //
-    /////////////////////////////////////////////////////////////////////////////////////////////
-
-    private void update(){
-
-        FetchSongTask fetchSongTask = new FetchSongTask();
-        fetchSongTask.execute(artist_id);
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int id = item.getItemId();
+        if(id == R.id.now_playing && !getActivity().getLocalClassName().equals("ArtistMain")){
+            if(mService.isLoaded()) {
+                Intent intent = new Intent(getActivity(), PlayerMain.class);
+                intent.putExtra("uri", StreamerContract.TrackEntry.buildTrackByArtist(artistId).toString());
+                intent.putExtra("position", -1);
+                intent.putExtra("first", false);
+                getActivity().startActivity(intent);
+            }else{
+                Toast.makeText(getActivity(),"There is no music playing now. Select a song.",Toast.LENGTH_SHORT).show();
+            }
+        }else if (id == R.id.action_settings) {
+//            Log.v("davi","onOptionsItemSelected do TrackFragment com id == R.id.action_settings");
+            countryCode = PreferenceManager.getDefaultSharedPreferences(getActivity()).getString("location","US");
+            startActivity(new Intent(getActivity(),SettingsActivity.class));
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
 
-    /////////////////////////////////////////////////////////////////////////////////////////////
-    //  Innner classes
-    ///
-    ///
-    ///
-    //
-    //
-    /////////////////////////////////////////////////////////////////////////////////////////////
+    @Override
+    public void onResume() {
+        super.onResume();
+//        Log.v("davi","onResume do TrackFragment");
+        checkSett();
+    }
 
-    public class FetchSongTask extends AsyncTask<String,Void,ArrayList<kaaes.spotify.webapi.android.models.Track>> {
-        private SpotifyApi api = new SpotifyApi();
-        private SpotifyService spotify;
-        private String erro = "";
-
-
-        @Override
-        protected ArrayList<kaaes.spotify.webapi.android.models.Track> doInBackground(String... params){
-            ArrayList<kaaes.spotify.webapi.android.models.Track> mList = new ArrayList<kaaes.spotify.webapi.android.models.Track>();
-            try {
-                SpotifyApi api = new SpotifyApi();
-                SpotifyService spotify = api.getService();
-
-                String country = Locale.getDefault().getCountry();
-                if (country.equals("")) {
-                    country = "US";
+    private void checkSett(){
+        if(!countryCode.equals("")) {
+            if(mBound) {
+                if(mService.isLoaded()) {
+                    mService.notif();
                 }
-                Map<String, Object> ct = new HashMap<String, Object>();
-                ct.put("country", "US");
-                List<kaaes.spotify.webapi.android.models.Track> results = spotify.getArtistTopTrack(params[0], ct).tracks;
-                mList = (ArrayList) results;
-            }catch (Exception e){
-                erro = "net";
-            }
-
-            return mList;
-        }
-
-        @Override
-        protected void onPostExecute(ArrayList<kaaes.spotify.webapi.android.models.Track> tracks) {
-            super.onPostExecute(tracks);
-            trackAdapter.clear();
-
-            if(tracks.size() > 0){
-                for(kaaes.spotify.webapi.android.models.Track track : tracks){
-                    Track newone = new Track();
-                    newone.setSong(track.name);
-                    newone.setId(track.id);
-                    newone.setAlbum(track.album.name);
-                    if(track.album.images.size() > 0){
-                        //The code below is to get the lighter image that is best to this phone.
-                        //For example, for a phone xhdpi it's needed an image with at least
-                        //64* 2 = 128 pixels to cover the ImageView
-                        //Note that I use the R.dimen.artist_height variable to don't
-                        //hard code the size of thImageView
-                        float height = getResources().getDimension(R.dimen.album_height);
-                        for (int i = track.album.images.size()-1; i >= 0;i--) {
-                            if (((float)track.album.images.get(i).height >= height ) || i == 0){
-                                newone.setImage(Uri.parse(track.album.images.get(i).url));
-                                break;
-                            }
-                        }
-                    }else{
-
+                String location = PreferenceManager.getDefaultSharedPreferences(getActivity()).getString("location", "US");
+                if (countryCode.equals(location) == false) {
+                    update();
+                    countryCode = PreferenceManager.getDefaultSharedPreferences(getActivity()).getString("location", "US");
+                    if(mService.isLoaded()){
+                        mService.stop();
+                        mService.reset();
+                        mService.exit();
+                        mService.stopNotif();
                     }
-                    trackAdapter.add(newone);
                 }
-            }else{
-                String message = (erro == "net")?getString(R.string.connexion_error):String.format(getString(R.string.artist_does_not_have_song), artist_name);
-                AlertDialog.Builder alert = new AlertDialog.Builder(getActivity());
-                alert.setTitle("Spotify Streamer");
-                alert.setMessage(message);
-                alert.setNeutralButton("OK", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        getActivity().finish();
-                    }
-                });
-                alert.show();
-
+                countryCode = "";
             }
         }
+    }
+    private void update(){
+        getActivity().setTitle(artistName);
+        TrackAsyncTask trackAsyncTask = new TrackAsyncTask(getActivity());
+        trackAsyncTask.execute(artistId, artistName);
+    }
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        if (!mBound) {
+            getActivity().bindService(new Intent(getActivity(), PlayerService.class), mConnection, Context.BIND_AUTO_CREATE);
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        if(mBound){
+            disconnect();
+        }
+    }
+
+    @Override
+    public void onViewStateRestored(Bundle savedInstanceState) {
+        if(savedInstanceState != null){
+            artistId = savedInstanceState.getString("artistId","");
+            artistName = savedInstanceState.getString("artistName","");
+            countryCode = savedInstanceState.getString("countryCode","");
+        }
+        super.onViewStateRestored(savedInstanceState);
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle outState) {
+        outState.putString("artistId",artistId);
+        outState.putString("artistName",artistName);
+        outState.putString("countryCode",countryCode);
+        super.onSaveInstanceState(outState);
+    }
+
+    @Override
+    public Loader<Cursor> onCreateLoader(int id, Bundle args) {
+        Intent intent = getActivity().getIntent();
+        if (intent == null) return null;
+        Uri uri = StreamerContract.TrackEntry.buildTrackByArtist(artistId);
+        return new CursorLoader(getActivity(),uri,null,null,null,null);
+    }
+
+    @Override
+    public void onLoadFinished(Loader<Cursor> loader, Cursor data) {
+        trackAdapter.swapCursor(data);
+    }
+
+    @Override
+    public void onLoaderReset(Loader<Cursor> loader) {
+        trackAdapter.swapCursor(null);
+    }
+
+    public interface clickTrackInterface{
+        public void clickTrack(String uri, int position, boolean first);
     }
 }

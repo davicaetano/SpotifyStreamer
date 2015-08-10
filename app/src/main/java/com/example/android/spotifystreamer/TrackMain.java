@@ -1,39 +1,40 @@
 package com.example.android.spotifystreamer;
 
-import android.support.v7.app.ActionBarActivity;
+import android.content.Intent;
 import android.os.Bundle;
+import android.support.v7.app.ActionBarActivity;
 import android.view.Menu;
-import android.view.MenuItem;
 
 
-public class TrackMain extends ActionBarActivity {
-
+public class TrackMain extends ActionBarActivity implements TrackFragment.clickTrackInterface {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getSupportActionBar().setDisplayHomeAsUpEnabled(false);
         setContentView(R.layout.activity_song);
+        if(savedInstanceState == null) {
+            TrackFragment trackFragment = new TrackFragment();
+            Intent intent = getIntent();
+            Bundle arguments = new Bundle();
+            arguments.putString("artistName",intent.getStringExtra("artistName"));
+            arguments.putString("artistId",intent.getStringExtra("artistId"));
+            trackFragment.setArguments(arguments);
+            getSupportFragmentManager().beginTransaction().add(R.id.fragment_song_container, trackFragment).commit();
+        }
     }
-
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        //getMenuInflater().inflate(R.menu.menu_detail, menu);
+        getMenuInflater().inflate(R.menu.menu_default, menu);
+        getMenuInflater().inflate(R.menu.menu_now_playing, menu);
         return true;
     }
 
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        int id = item.getItemId();
-
-        //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
-            return true;
-        }
-
-        return super.onOptionsItemSelected(item);
+    public void clickTrack(String uri, int position, boolean first){
+        Intent intent = new Intent(this, PlayerMain.class);
+        intent.putExtra("uri", uri);
+        intent.putExtra("position", position);
+        intent.putExtra("first", first);
+        this.startActivity(intent);
     }
 }
